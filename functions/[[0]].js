@@ -8,7 +8,6 @@ export async function onRequest(context) {
 
   const referer = request.headers.get("Referer");
 
-  // Không có referer → redirect
   if (!referer) {
     return Response.redirect(
       "https://www.youtube.com/watch?v=Kq9_r9l8MpI",
@@ -25,11 +24,10 @@ export async function onRequest(context) {
 
   const ALLOWED_ROOT_DOMAIN = "ssplay.net";
 
-  const isAllowedReferer =
-    refererHost === ALLOWED_ROOT_DOMAIN ||
-    refererHost.endsWith("." + ALLOWED_ROOT_DOMAIN);
-
-  if (!isAllowedReferer) {
+  if (
+    refererHost !== ALLOWED_ROOT_DOMAIN &&
+    !refererHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
+  ) {
     return new Response("Hotlink denied", { status: 403 });
   }
 
@@ -48,50 +46,71 @@ export async function onRequest(context) {
   const shardId = hostMatch[1];
 
   /* =========================
-     3. PATH & EXTENSION
+     3. PATH
      ========================= */
 
   const pathname = url.pathname.replace(/^\/+/, "");
-
   if (!pathname) {
     return new Response("Not found", { status: 404 });
   }
 
-  const allowedExtensions = [".png", ".m3u8", ".html"];
-  const lowerPath = pathname.toLowerCase();
-
-  const isAllowedExt = allowedExtensions.some(ext =>
-    lowerPath.endsWith(ext)
-  );
-
-  if (!isAllowedExt) {
-    return new Response("File type not allowed", { status: 403 });
-  }
+  const lower = pathname.toLowerCase();
+  let originUrl = null;
 
   /* =========================
-     4. PREVIEW ID
+     4. GLOBAL FILE
      ========================= */
 
-  const dashIndex = pathname.indexOf("-");
-  if (dashIndex === -1) {
-    return new Response("Invalid filename", { status: 400 });
-  }
-
-  const previewId = pathname.substring(0, dashIndex);
-
-  if (!/^[a-z0-9]+$/i.test(previewId)) {
-    return new Response("Invalid preview id", { status: 400 });
+  if (lower === "index.html") {
+    originUrl =
+      `https://scontent-x${shardId}-fbcdn.pages.dev/index.html`;
   }
 
   /* =========================
-     5. BUILD ORIGIN URL
+     5. PREVIEW M3U8
      ========================= */
 
-  const originUrl =
-    `https://${previewId}.scontent-x${shardId}-fbcdn.pages.dev/${pathname}`;
+  else if (lower.endsWith(".m3u8")) {
+    const previewId = pathname.slice(0, -5); // remove .m3u8
+
+    if (!/^[a-z0-9]+$/i.test(previewId)) {
+      return new Response("Invalid preview id", { status: 403 });
+    }
+
+    originUrl =
+      `https://${previewId}.scontent-x${shardId}-fbcdn.pages.dev/${pathname}`;
+  }
 
   /* =========================
-     6. FETCH ORIGIN
+     6. PREVIEW PNG
+     ========================= */
+
+  else if (lower.endsWith(".png")) {
+    const dashIndex = pathname.indexOf("-");
+    if (dashIndex === -1) {
+      return new Response("Invalid image name", { status: 403 });
+    }
+
+    const previewId = pathname.substring(0, dashIndex);
+
+    if (!/^[a-z0-9]+$/i.test(previewId)) {
+      return new Response("Invalid preview id", { status: 403 });
+    }
+
+    originUrl =
+      `https://${previewId}.scontent-x${shardId}-fbcdn.pages.dev/${pathname}`;
+  }
+
+  /* =========================
+     7. BLOCK ALL OTHERS
+     ========================= */
+
+  else {
+    return new Response("File not allowed", { status: 403 });
+  }
+
+  /* =========================
+     8. FETCH ORIGIN
      ========================= */
 
   const originResponse = await fetch(originUrl, {
@@ -107,11 +126,10 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     7. RESPONSE
+     9. RESPONSE
      ========================= */
 
   const headers = new Headers(originResponse.headers);
-
   headers.set("Cache-Control", "public, max-age=31536000, immutable");
   headers.set("X-Content-Type-Options", "nosniff");
 
