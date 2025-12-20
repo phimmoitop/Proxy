@@ -1,9 +1,28 @@
+const ALLOWED_ROOT_DOMAIN = "ssplay.net";
+const HOST_RE = /^scontent-x([a-z0-9]{2})-fbcdn\.ssplay\.net$/i;
+const ID_RE = /^[a-z0-9]+$/i;
+
 export async function onRequest(context) {
   const { request } = context;
+
+  /* =========================
+     0. WORKER CACHE (EARLY RETURN)
+     ========================= */
+
+  const cache = caches.default;
+  const cachedResponse = await cache.match(request);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+
+  /* =========================
+     1. PARSE URL (SAU CACHE)
+     ========================= */
+
   const url = new URL(request.url);
 
   /* =========================
-     1. REFERER PROTECTION
+     2. REFERER PROTECTION
      ========================= */
 
   const referer = request.headers.get("Referer");
@@ -22,8 +41,6 @@ export async function onRequest(context) {
     return new Response("Invalid referer", { status: 403 });
   }
 
-  const ALLOWED_ROOT_DOMAIN = "ssplay.net";
-
   if (
     refererHost !== ALLOWED_ROOT_DOMAIN &&
     !refererHost.endsWith("." + ALLOWED_ROOT_DOMAIN)
@@ -32,13 +49,10 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     2. VALIDATE HOSTNAME
+     3. VALIDATE HOSTNAME
      ========================= */
 
-  const hostMatch = url.hostname.match(
-    /^scontent-x([a-z0-9]{2})-fbcdn\.ssplay\.net$/i
-  );
-
+  const hostMatch = HOST_RE.exec(url.hostname);
   if (!hostMatch) {
     return new Response("Invalid host", { status: 403 });
   }
@@ -46,7 +60,7 @@ export async function onRequest(context) {
   const shardId = hostMatch[1];
 
   /* =========================
-     3. PATH
+     4. PATH
      ========================= */
 
   const pathname = url.pathname.replace(/^\/+/, "");
@@ -55,10 +69,10 @@ export async function onRequest(context) {
   }
 
   const lower = pathname.toLowerCase();
-  let originUrl = null;
+  let originUrl;
 
   /* =========================
-     4. GLOBAL FILE
+     5. GLOBAL FILE
      ========================= */
 
   if (lower === "index.html") {
@@ -67,13 +81,13 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     5. PREVIEW M3U8
+     6. PREVIEW M3U8
      ========================= */
 
   else if (lower.endsWith(".m3u8")) {
-    const previewId = pathname.slice(0, -5); // remove .m3u8
+    const previewId = pathname.slice(0, -5);
 
-    if (!/^[a-z0-9]+$/i.test(previewId)) {
+    if (!ID_RE.test(previewId)) {
       return new Response("Invalid preview id", { status: 403 });
     }
 
@@ -82,7 +96,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     6. PREVIEW PNG
+     7. PREVIEW PNG
      ========================= */
 
   else if (lower.endsWith(".png")) {
@@ -91,9 +105,9 @@ export async function onRequest(context) {
       return new Response("Invalid image name", { status: 403 });
     }
 
-    const previewId = pathname.substring(0, dashIndex);
+    const previewId = pathname.slice(0, dashIndex);
 
-    if (!/^[a-z0-9]+$/i.test(previewId)) {
+    if (!ID_RE.test(previewId)) {
       return new Response("Invalid preview id", { status: 403 });
     }
 
@@ -102,7 +116,7 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     7. BLOCK ALL OTHERS
+     8. BLOCK ALL OTHERS
      ========================= */
 
   else {
@@ -110,14 +124,10 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     8. FETCH ORIGIN
+     9. FETCH ORIGIN (CACHE MISS)
      ========================= */
 
-  const originResponse = await fetch(originUrl, {
-    headers: {
-      "User-Agent": "ssPlay.Net-Proxy-Hot-Protect"
-    }
-  });
+  const originResponse = await fetch(originUrl);
 
   if (!originResponse.ok) {
     return new Response("File not found", {
@@ -126,15 +136,18 @@ export async function onRequest(context) {
   }
 
   /* =========================
-     9. RESPONSE
+     10. RESPONSE + STORE CACHE
      ========================= */
 
-  const headers = new Headers(originResponse.headers);
-  headers.set("Cache-Control", "public, max-age=31536000, immutable");
-  headers.set("X-Content-Type-Options", "nosniff");
+  const response = new Response(originResponse.body, originResponse);
 
-  return new Response(originResponse.body, {
-    status: originResponse.status,
-    headers
-  });
+  response.headers.set(
+    "Cache-Control",
+    "public, max-age=31536000, immutable"
+  );
+  response.headers.set("X-Content-Type-Options", "nosniff");
+
+  await cache.put(request, response.clone());
+
+  return response;
 }
