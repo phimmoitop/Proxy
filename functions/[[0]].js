@@ -9,17 +9,22 @@ export async function onRequest(context) {
      0. WORKER CACHE (EARLY RETURN)
      ========================= */
 
+  const url = new URL(request.url);
+
+  // 🔑 CHỈNH DUY NHẤT: cache key chuẩn hoá theo URL
+  const cacheKey = new Request(url.toString(), {
+    method: "GET"
+  });
+
   const cache = caches.default;
-  const cachedResponse = await cache.match(request);
+  const cachedResponse = await cache.match(cacheKey);
   if (cachedResponse) {
     return cachedResponse;
   }
 
   /* =========================
-     1. PARSE URL (SAU CACHE)
+     1. PARSE URL
      ========================= */
-
-  const url = new URL(request.url);
 
   /* =========================
      2. REFERER PROTECTION
@@ -147,7 +152,8 @@ export async function onRequest(context) {
   );
   response.headers.set("X-Content-Type-Options", "nosniff");
 
-  await cache.put(request, response.clone());
+  // 🔑 CHỈNH DUY NHẤT: put theo cacheKey
+  await cache.put(cacheKey, response.clone());
 
   return response;
 }
