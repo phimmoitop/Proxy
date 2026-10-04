@@ -1,0 +1,8 @@
+{
+  "name": "vltk-websocket-worker",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}
