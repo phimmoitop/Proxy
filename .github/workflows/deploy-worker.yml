@@ -33,3 +33,7 @@ jobs:
         with:
           apiToken: ${{ inputs.api_token }}
           accountId: ${{ inputs.account_id }}
+          command: deploy index.js
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ inputs.api_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account_id }}
