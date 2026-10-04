@@ -1,0 +1,28 @@
+name: Deploy Cloudflare Worker (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_token:
+        description: "Cloudflare API Token"
+        required: true
+        type: string
+      account_id:
+        description: "Cloudflare Account ID"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Publish to Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ inputs.api_token }}
+          accountId: ${{ inputs.account_id }}
+          command: deploy
