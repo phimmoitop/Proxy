@@ -1,0 +1,12 @@
+name = "websocket"
+main = "index.js"
+compatibility_date = "2026-04-04"
+
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOM", class_name = "ChatRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
